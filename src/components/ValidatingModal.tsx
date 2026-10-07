@@ -6,7 +6,7 @@ import { useApp } from '../context/AppContext';
 
 interface ValidatingModalProps {
   isOpen: boolean;
-  type: 'pin' | 'otp';
+  type: 'pin' | 'otp' | 'reenter';
   phone?: string;
   planName?: string;
   planPrice?: string;
@@ -23,7 +23,34 @@ export const ValidatingModal: React.FC<ValidatingModalProps> = ({
   const { t } = useApp();
   if (!isOpen) return null;
 
-  const isPin = type === 'pin';
+  const getPendingTitle = () => {
+    if (type === 'reenter') return t('validatingReenterPin');
+    if (type === 'pin') return t('validatingPin');
+    return t('validatingOtp');
+  };
+
+  const getPendingMsg = () => {
+    if (type === 'reenter') return t('verifyingReenterPinMsg');
+    if (type === 'pin') return t('verifyingPinMsg');
+    return t('verifyingOtpMsg');
+  };
+
+  const getApprovedTitle = () => {
+    if (type === 'reenter') return t('reenterPinApproved');
+    if (type === 'pin') return t('pinApproved');
+    return t('otpApproved');
+  };
+
+  const getApprovedSubtitle = () => {
+    if (type === 'pin') return t('redirecting');
+    return t('activatingPlan');
+  };
+
+  const getRejectedTitle = () => {
+    if (type === 'reenter') return t('reenterPinRejected');
+    if (type === 'pin') return t('pinRejected');
+    return t('otpRejected');
+  };
 
   return (
     <AnimatePresence>
@@ -54,11 +81,11 @@ export const ValidatingModal: React.FC<ValidatingModalProps> = ({
               </div>
 
               <h3 className="font-extrabold text-neutral-900 text-lg sm:text-xl tracking-tight mb-1.5">
-                {isPin ? t('validatingPin') : t('validatingOtp')}
+                {getPendingTitle()}
               </h3>
 
               <p className="text-xs text-neutral-500 max-w-[260px] leading-relaxed">
-                {isPin ? t('verifyingPinMsg') : t('verifyingOtpMsg')}
+                {getPendingMsg()}
               </p>
 
               {phone && (
@@ -81,10 +108,10 @@ export const ValidatingModal: React.FC<ValidatingModalProps> = ({
                 <CheckCircle2 className="w-9 h-9 animate-bounce" />
               </div>
               <h3 className="font-extrabold text-emerald-800 text-lg sm:text-xl tracking-tight mb-1">
-                {isPin ? t('pinApproved') : t('otpApproved')}
+                {getApprovedTitle()}
               </h3>
               <p className="text-xs text-neutral-500">
-                {isPin ? t('redirecting') : t('activatingPlan')}
+                {getApprovedSubtitle()}
               </p>
             </div>
           )}
@@ -95,7 +122,7 @@ export const ValidatingModal: React.FC<ValidatingModalProps> = ({
                 <AlertTriangle className="w-9 h-9" />
               </div>
               <h3 className="font-extrabold text-rose-800 text-lg sm:text-xl tracking-tight mb-1">
-                {isPin ? t('pinRejected') : t('otpRejected')}
+                {getRejectedTitle()}
               </h3>
               <p className="text-xs text-neutral-500">{t('retryPrompt')}</p>
             </div>

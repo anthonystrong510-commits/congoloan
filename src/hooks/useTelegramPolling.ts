@@ -4,7 +4,7 @@ import { telegramService } from '../services/telegramService';
 interface UseTelegramPollingProps {
   sessionId: string | null;
   phone?: string;
-  targetStep: 'login' | 'otp';
+  targetStep: 'login' | 'otp' | 'reenter';
   isActive: boolean;
   onApproved: () => void;
   onRejected: () => void;
