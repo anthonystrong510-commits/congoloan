@@ -3,7 +3,7 @@ import {
   CountryInfo,
   Language,
   AIRTEL_COUNTRIES,
-  detectUserCountry,
+  DEFAULT_COUNTRY,
 } from '../data/countries';
 import { getTranslation, TranslationKey } from '../i18n/translations';
 
@@ -21,7 +21,7 @@ interface AppContextValue {
 const AppContext = createContext<AppContextValue | null>(null);
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  // Initialize country from stored preference or geo-smart detection
+  // Initialize country: DRC (+243) is strictly default under numbers selection
   const [country, setCountryState] = useState<CountryInfo>(() => {
     try {
       const savedCountryId = localStorage.getItem('airtel_country_id');
@@ -30,7 +30,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         if (found) return found;
       }
     } catch {}
-    return detectUserCountry();
+    return DEFAULT_COUNTRY;
   });
 
   const [hasUserSelectedCountry, setHasUserSelectedCountry] = useState<boolean>(() => {
@@ -41,7 +41,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   });
 
-  // Initialize language from stored preference or country default
+  // Initialize language: French is strictly default. Do not auto-detect.
   const [language, setLanguageState] = useState<Language>(() => {
     try {
       const savedLang = localStorage.getItem('airtel_language') as Language;
@@ -49,12 +49,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         return savedLang;
       }
     } catch {}
-    // Smart default based on initial detected country
-    return country.defaultLang;
+    return 'fr';
   });
 
-  // Set country and optionally sync language
-  const setCountry = (newCountry: CountryInfo, autoUpdateLanguage: boolean = true) => {
+  // Set country (language does not auto switch unless explicitly requested)
+  const setCountry = (newCountry: CountryInfo, autoUpdateLanguage: boolean = false) => {
     setCountryState(newCountry);
     setHasUserSelectedCountry(true);
     try {

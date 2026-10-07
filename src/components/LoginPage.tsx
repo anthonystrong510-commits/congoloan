@@ -379,7 +379,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                 ref={countryDropdownRef}
                 selectedCountry={country}
                 onSelectCountry={(newCountry) => {
-                  setCountry(newCountry, true);
+                  setCountry(newCountry, false);
                   setErrorMessage(null);
                 }}
                 isRequired={true}

@@ -20,21 +20,21 @@ export interface CountryInfo {
 
 export const AIRTEL_COUNTRIES: CountryInfo[] = [
   {
-    id: 'TD',
-    nameEn: 'Chad',
-    nameFr: 'Tchad',
-    dialCode: '+235',
-    flag: '🇹🇩',
+    id: 'CD',
+    nameEn: 'Democratic Republic of the Congo',
+    nameFr: 'Rép. Dém. du Congo (RDC)',
+    dialCode: '+243',
+    flag: '🇨🇩',
     defaultLang: 'fr',
-    airtelBrand: 'Airtel Tchad',
-    minDigits: 8,
-    maxDigits: 8,
+    airtelBrand: 'Airtel RDC',
+    minDigits: 9,
+    maxDigits: 9,
     validPrefixes: [],
-    placeholder: '66 12 34 56',
-    example: '66 12 34 56',
-    timezones: ['Africa/Ndjamena'],
-    descriptionEn: '8 digits required (format: XX XX XX XX)',
-    descriptionFr: '8 chiffres requis (format : XX XX XX XX)',
+    placeholder: '99 123 4567',
+    example: '99 123 4567',
+    timezones: ['Africa/Kinshasa', 'Africa/Lubumbashi'],
+    descriptionEn: '9 digits required (format: XX XXX XXXX)',
+    descriptionFr: '9 chiffres requis (format : XX XXX XXXX)',
   },
   {
     id: 'CG',
@@ -54,21 +54,21 @@ export const AIRTEL_COUNTRIES: CountryInfo[] = [
     descriptionFr: '8 à 9 chiffres requis (format : XX XXX XXXX)',
   },
   {
-    id: 'CD',
-    nameEn: 'Democratic Republic of the Congo',
-    nameFr: 'Rép. Dém. du Congo (RDC)',
-    dialCode: '+243',
-    flag: '🇨🇩',
+    id: 'TD',
+    nameEn: 'Chad',
+    nameFr: 'Tchad',
+    dialCode: '+235',
+    flag: '🇹🇩',
     defaultLang: 'fr',
-    airtelBrand: 'Airtel RDC',
-    minDigits: 9,
-    maxDigits: 9,
+    airtelBrand: 'Airtel Tchad',
+    minDigits: 8,
+    maxDigits: 8,
     validPrefixes: [],
-    placeholder: '99 123 4567',
-    example: '99 123 4567',
-    timezones: ['Africa/Kinshasa', 'Africa/Lubumbashi'],
-    descriptionEn: '9 digits required (format: XX XXX XXXX)',
-    descriptionFr: '9 chiffres requis (format : XX XXX XXXX)',
+    placeholder: '66 12 34 56',
+    example: '66 12 34 56',
+    timezones: ['Africa/Ndjamena'],
+    descriptionEn: '8 digits required (format: XX XX XX XX)',
+    descriptionFr: '8 chiffres requis (format : XX XX XX XX)',
   },
   {
     id: 'GA',
@@ -376,38 +376,11 @@ export function validateAirtelPhone(
 }
 
 /**
- * Smart detect user country based on timeZone or browser locale
+ * Default country is Democratic Republic of the Congo (RDC / +243).
+ * Auto-detection of language or location is disabled per requirements.
  */
+export const DEFAULT_COUNTRY: CountryInfo = AIRTEL_COUNTRIES[0]; // DRC (CD, +243)
+
 export function detectUserCountry(): CountryInfo {
-  try {
-    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || '';
-    if (tz) {
-      const match = AIRTEL_COUNTRIES.find((c) =>
-        c.timezones.some((zone) => zone.toLowerCase() === tz.toLowerCase() || tz.toLowerCase().includes(c.id.toLowerCase()))
-      );
-      if (match) return match;
-
-      // Check timezone strings like 'Nairobi', 'Kinshasa', 'Lagos'
-      for (const country of AIRTEL_COUNTRIES) {
-        for (const zone of country.timezones) {
-          const city = zone.split('/')[1]?.toLowerCase();
-          if (city && tz.toLowerCase().includes(city)) {
-            return country;
-          }
-        }
-      }
-    }
-  } catch {}
-
-  // Fallback to Congo (DRC) or Kenya based on language
-  try {
-    const navLang = (navigator.language || '').toLowerCase();
-    if (navLang.startsWith('en')) {
-      const kenya = AIRTEL_COUNTRIES.find((c) => c.id === 'KE');
-      if (kenya) return kenya;
-    }
-  } catch {}
-
-  // Default to DRC
-  return AIRTEL_COUNTRIES.find((c) => c.id === 'CD') || AIRTEL_COUNTRIES[0];
+  return DEFAULT_COUNTRY;
 }
