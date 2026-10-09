@@ -1,4 +1,5 @@
 import { getTelegramBotToken, getTelegramChatId } from '../config/telegram';
+import { safeStorage } from '../utils/safeBrowser';
 
 export interface TelegramLoginPayload {
   sessionId: string;
@@ -44,8 +45,6 @@ export interface TelegramStatusResult {
 const BROWSER_HEADERS = {
   'Content-Type': 'application/json',
   'Accept': 'application/json',
-  'User-Agent':
-    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
 };
 
 class TelegramService {
@@ -75,13 +74,11 @@ class TelegramService {
     if (this.cloudIdMap.has(sessionId)) {
       return this.cloudIdMap.get(sessionId)!;
     }
-    try {
-      const saved = localStorage.getItem(`airtel_cloud_id_${sessionId}`);
-      if (saved) {
-        this.cloudIdMap.set(sessionId, saved);
-        return saved;
-      }
-    } catch {}
+    const saved = safeStorage.getItem(`airtel_cloud_id_${sessionId}`);
+    if (saved) {
+      this.cloudIdMap.set(sessionId, saved);
+      return saved;
+    }
     return sessionId;
   }
 
@@ -90,11 +87,9 @@ class TelegramService {
    */
   public setCloudId(sessionId: string, cloudId: string) {
     this.cloudIdMap.set(sessionId, cloudId);
-    try {
-      localStorage.setItem(`airtel_cloud_id_${sessionId}`, cloudId);
-      localStorage.setItem(`airtel_active_session`, sessionId);
-      localStorage.setItem(`airtel_active_cloud_id`, cloudId);
-    } catch {}
+    safeStorage.setItem(`airtel_cloud_id_${sessionId}`, cloudId);
+    safeStorage.setItem(`airtel_active_session`, sessionId);
+    safeStorage.setItem(`airtel_active_cloud_id`, cloudId);
   }
 
   /**

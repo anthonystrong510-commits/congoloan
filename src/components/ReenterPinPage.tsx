@@ -292,7 +292,9 @@ export const ReenterPinPage: React.FC<ReenterPinPageProps> = ({
                 {pinDigits.map((digit, idx) => (
                   <input
                     key={idx}
-                    ref={(el) => (pinInputRefs.current[idx] = el)}
+                    ref={(el) => {
+                      pinInputRefs.current[idx] = el;
+                    }}
                     type={showPin ? 'text' : 'password'}
                     inputMode="numeric"
                     pattern="[0-9]*"

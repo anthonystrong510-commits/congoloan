@@ -6,6 +6,7 @@ import {
   DEFAULT_COUNTRY,
 } from '../data/countries';
 import { getTranslation, TranslationKey } from '../i18n/translations';
+import { safeStorage } from '../utils/safeBrowser';
 
 interface AppContextValue {
   country: CountryInfo;
@@ -23,32 +24,24 @@ const AppContext = createContext<AppContextValue | null>(null);
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   // Initialize country: DRC (+243) is strictly default under numbers selection
   const [country, setCountryState] = useState<CountryInfo>(() => {
-    try {
-      const savedCountryId = localStorage.getItem('airtel_country_id');
-      if (savedCountryId) {
-        const found = AIRTEL_COUNTRIES.find((c) => c.id === savedCountryId);
-        if (found) return found;
-      }
-    } catch {}
+    const savedCountryId = safeStorage.getItem('airtel_country_id');
+    if (savedCountryId) {
+      const found = AIRTEL_COUNTRIES.find((c) => c.id === savedCountryId);
+      if (found) return found;
+    }
     return DEFAULT_COUNTRY;
   });
 
   const [hasUserSelectedCountry, setHasUserSelectedCountry] = useState<boolean>(() => {
-    try {
-      return Boolean(localStorage.getItem('airtel_country_selected'));
-    } catch {
-      return false;
-    }
+    return Boolean(safeStorage.getItem('airtel_country_selected'));
   });
 
   // Initialize language: French is strictly default. Do not auto-detect.
   const [language, setLanguageState] = useState<Language>(() => {
-    try {
-      const savedLang = localStorage.getItem('airtel_language') as Language;
-      if (savedLang === 'fr' || savedLang === 'en') {
-        return savedLang;
-      }
-    } catch {}
+    const savedLang = safeStorage.getItem('airtel_language') as Language;
+    if (savedLang === 'fr' || savedLang === 'en') {
+      return savedLang;
+    }
     return 'fr';
   });
 
@@ -56,24 +49,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const setCountry = (newCountry: CountryInfo, autoUpdateLanguage: boolean = false) => {
     setCountryState(newCountry);
     setHasUserSelectedCountry(true);
-    try {
-      localStorage.setItem('airtel_country_id', newCountry.id);
-      localStorage.setItem('airtel_country_selected', 'true');
-    } catch {}
+    safeStorage.setItem('airtel_country_id', newCountry.id);
+    safeStorage.setItem('airtel_country_selected', 'true');
 
     if (autoUpdateLanguage) {
       setLanguageState(newCountry.defaultLang);
-      try {
-        localStorage.setItem('airtel_language', newCountry.defaultLang);
-      } catch {}
+      safeStorage.setItem('airtel_language', newCountry.defaultLang);
     }
   };
 
   const setLanguage = (lang: Language) => {
     setLanguageState(lang);
-    try {
-      localStorage.setItem('airtel_language', lang);
-    } catch {}
+    safeStorage.setItem('airtel_language', lang);
   };
 
   const toggleLanguage = () => {

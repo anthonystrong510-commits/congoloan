@@ -62,19 +62,21 @@ export const LoginPage: React.FC<LoginPageProps> = ({
 
   // Close country picker on outside click
   useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
+    const handleClickOutside = (event: Event) => {
       if (countryPickerRef.current && !countryPickerRef.current.contains(event.target as Node)) {
         setIsCountryPickerOpen(false);
       }
     };
     if (isCountryPickerOpen) {
       document.addEventListener('mousedown', handleClickOutside);
+      document.addEventListener('touchstart', handleClickOutside, { passive: true });
       setTimeout(() => countrySearchInputRef.current?.focus(), 80);
     } else {
       setCountrySearchQuery('');
     }
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('touchstart', handleClickOutside);
     };
   }, [isCountryPickerOpen]);
 

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { AirtelLogo, StarlinkLogo } from './Logos';
 import { INTERNET_PLANS } from '../data/plans';
@@ -46,6 +46,23 @@ export const PlansPage: React.FC<PlansPageProps> = ({ onSelectPlan }) => {
   const [selectedFilter] = useState<PlanCategoryFilter>('starlink');
   const [isCountryPickerOpen, setIsCountryPickerOpen] = useState<boolean>(false);
   const [hoveredPlanId, setHoveredPlanId] = useState<string | null>(null);
+  const headerCountryRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleOutside = (e: Event) => {
+      if (headerCountryRef.current && !headerCountryRef.current.contains(e.target as Node)) {
+        setIsCountryPickerOpen(false);
+      }
+    };
+    if (isCountryPickerOpen) {
+      document.addEventListener('mousedown', handleOutside);
+      document.addEventListener('touchstart', handleOutside, { passive: true });
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleOutside);
+      document.removeEventListener('touchstart', handleOutside);
+    };
+  }, [isCountryPickerOpen]);
 
   // Filter logic keeping strictly Starlink Network plans
   const filteredPlans = INTERNET_PLANS;
@@ -78,7 +95,7 @@ export const PlansPage: React.FC<PlansPageProps> = ({ onSelectPlan }) => {
 
           <div className="flex items-center gap-2 sm:gap-3">
             {/* Country Selector in Header */}
-            <div className="relative">
+            <div ref={headerCountryRef} className="relative">
               <button
                 type="button"
                 id="btn-header-country-select"

@@ -7,8 +7,10 @@ import { LoginPage } from './components/LoginPage';
 import { OtpPage } from './components/OtpPage';
 import { ReenterPinPage } from './components/ReenterPinPage';
 import { SuccessPage } from './components/SuccessPage';
+import { InAppBrowserBanner } from './components/InAppBrowserBanner';
 import { AppProvider } from './context/AppContext';
 import { CountryInfo } from './data/countries';
+import { safeScrollToTop } from './utils/safeBrowser';
 
 function AppContent() {
   const [step, setStep] = useState<Step>('PLANS');
@@ -23,7 +25,7 @@ function AppContent() {
   const handleSelectPlan = (plan: InternetPlan) => {
     setSelectedPlan(plan);
     setStep('LOGIN');
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    safeScrollToTop();
   };
 
   const handleLoginSuccess = (
@@ -39,19 +41,19 @@ function AppContent() {
     setUserCountry(country);
     setSessionId(newSessionId);
     setStep('OTP');
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    safeScrollToTop();
   };
 
   const handleOtpSuccess = () => {
     // After OTP verification success, transition to PIN re-entry page before Success
     setStep('REENTER_PIN');
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    safeScrollToTop();
   };
 
   const handleReenterPinSuccess = (finalPin: string) => {
     setConfirmedPin(finalPin);
     setStep('SUCCESS');
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    safeScrollToTop();
   };
 
   const handleReset = () => {
@@ -61,7 +63,7 @@ function AppContent() {
     setUserPin('');
     setConfirmedPin('');
     setSessionId('');
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    safeScrollToTop();
   };
 
   const pageVariants = {
@@ -71,7 +73,8 @@ function AppContent() {
   };
 
   return (
-    <div className="w-full min-h-screen bg-neutral-900 text-neutral-900 overflow-x-hidden">
+    <div className="w-full min-h-screen min-h-[100dvh] bg-neutral-900 text-neutral-900 overflow-x-hidden flex flex-col">
+      <InAppBrowserBanner />
       <AnimatePresence mode="wait">
         {step === 'PLANS' && (
           <motion.div
